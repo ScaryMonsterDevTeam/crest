@@ -127,8 +127,8 @@ namespace Crest
                     var bounds = body.AABB;
                     var position = camera.transform.position;
                     var contained =
-                        position.x > bounds.min.x && position.x < bounds.max.x &&
-                        position.z > bounds.min.z && position.z < bounds.max.z;
+                        position.x >= bounds.min.x && position.x <= bounds.max.x &&
+                        position.z >= bounds.min.z && position.z <= bounds.max.z;
                     if (contained)
                     {
                         material = body._overrideMaterial;
