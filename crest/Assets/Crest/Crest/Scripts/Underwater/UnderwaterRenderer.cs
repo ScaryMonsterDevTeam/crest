@@ -210,7 +210,30 @@ namespace Crest
         {
             var isValid = true;
 
-            // Intentionally left empty. Here for downstream.
+            if (!_copyOceanMaterialParamsEachFrame)
+            {
+                foreach (var wb in WaterBody.WaterBodies)
+                {
+                    if (wb._overrideMaterial != null)
+                    {
+                        showMessage
+                        (
+                            "<i>Copy Ocean Material Params Each Frame</i> is <i>false</i>, " +
+                            "but <i>Override Material</i> is used on at least one <i>Water Body</i>. " +
+                            "The <i>Underwater Renderer</i> may copy from the incorrect material.",
+                            "Enable <i>Copy Ocean Material Params Each Frame</i>.",
+                            ValidatedHelper.MessageType.Warning, this,
+                            (SerializedObject serializedObject) =>
+                            {
+                                serializedObject.FindProperty("_copyOceanMaterialParamsEachFrame").boolValue = true;
+                            }
+                        );
+
+                        // Only report once.
+                        break;
+                    }
+                }
+            }
 
             return isValid;
         }
