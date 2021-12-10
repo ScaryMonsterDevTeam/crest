@@ -159,7 +159,6 @@ namespace Crest
         [SerializeField, Tooltip("Material to use for the ocean surface")]
         internal Material _material = null;
         public Material OceanMaterial { get => _material; set => _material = value; }
-        internal Material _innerTileWaterBodyMaterial;
 
         [System.Obsolete("Use the _layer field instead."), HideInInspector, SerializeField]
         string _layerName = "";
@@ -1119,7 +1118,6 @@ namespace Crest
             }
 
             var canSkipCulling = WaterBody.WaterBodies.Count == 0 && _canSkipCulling;
-            _innerTileWaterBodyMaterial = OceanMaterial;
 
             foreach (OceanChunkRenderer tile in _oceanChunkRenderers)
             {
@@ -1153,10 +1151,6 @@ namespace Crest
                             {
                                 tile.Rend.sharedMaterial = body._overrideMaterial;
                                 tile.MaterialOverridden = true;
-                                if (tile._isInterior)
-                                {
-                                    _innerTileWaterBodyMaterial = body._overrideMaterial;
-                                }
                             }
                             else
                             {
