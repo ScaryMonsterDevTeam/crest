@@ -28,7 +28,7 @@ Crest can be configured to efficiently generate smaller bodies of water, using t
    It is recommended to cover a larger area than the lake itself, to give a protective margin against LOD effects in the distance.
 
 Another advantage of the *WaterBody* component is it allows an optional override material to be provided, to change the appearance of the water.
-This currently only changes the appearance of the water surface, it does not currently affect the underwater effect.
+It will work underwater if *Underwater Renderer > Copy Ocean Material Params Each Frame* is enabled.
 
 Rivers
 ------
