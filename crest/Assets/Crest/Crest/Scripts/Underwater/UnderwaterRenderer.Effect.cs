@@ -115,8 +115,30 @@ namespace Crest
             Material underwaterPostProcessMaterial = underwaterPostProcessMaterialWrapper.material;
             if (copyParamsFromOceanMaterial)
             {
+                var material = OceanRenderer.Instance.OceanMaterial;
+                // Grab material from a water body if camera is within its XZ bounds.
+                foreach (var body in WaterBody.WaterBodies)
+                {
+                    if (body._overrideMaterial == null)
+                    {
+                        continue;
+                    }
+
+                    var bounds = body.AABB;
+                    var position = camera.transform.position;
+                    var contained =
+                        position.x > bounds.min.x && position.x < bounds.max.x &&
+                        position.z > bounds.min.z && position.z < bounds.max.z;
+                    if (contained)
+                    {
+                        material = body._overrideMaterial;
+                        // Water bodies should not overlap so grab the first one.
+                        break;
+                    }
+                }
+
                 // Measured this at approx 0.05ms on dell laptop
-                underwaterPostProcessMaterial.CopyPropertiesFromMaterial(OceanRenderer.Instance._innerTileWaterBodyMaterial);
+                underwaterPostProcessMaterial.CopyPropertiesFromMaterial(material);
             }
 
             underwaterPostProcessMaterial.SetVector("_DepthFogDensity", OceanRenderer.Instance.UnderwaterDepthFogDensity);
