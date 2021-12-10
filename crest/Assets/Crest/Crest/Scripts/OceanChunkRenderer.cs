@@ -44,6 +44,9 @@ namespace Crest
 
         int _lodIndex = -1;
 
+        // Whether it is one of the four interior tiles which nearest to the viewpoint.
+        internal bool _isInterior = false;
+
         static int sp_ReflectionTex = Shader.PropertyToID("_ReflectionTex");
 
         void Start()

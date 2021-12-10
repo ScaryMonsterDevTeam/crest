@@ -116,7 +116,7 @@ namespace Crest
             if (copyParamsFromOceanMaterial)
             {
                 // Measured this at approx 0.05ms on dell laptop
-                underwaterPostProcessMaterial.CopyPropertiesFromMaterial(OceanRenderer.Instance.OceanMaterial);
+                underwaterPostProcessMaterial.CopyPropertiesFromMaterial(OceanRenderer.Instance._innerWaterBodyMaterial);
             }
 
             underwaterPostProcessMaterial.SetVector("_DepthFogDensity", OceanRenderer.Instance.UnderwaterDepthFogDensity);
