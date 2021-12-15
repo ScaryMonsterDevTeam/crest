@@ -14,7 +14,7 @@ half2 SampleNormalMaps(float2 worldXZUndisplaced, float lodAlpha, in const Casca
 
 	const float2 v0 = float2(0.94, 0.34), v1 = float2(-0.85, -0.53);
 
-	worldXZUndisplaced -= _CrestFloatingOriginOffset.xz;
+	worldXZUndisplaced -= _CrestFloatingOriginOffset.xz % (_NormalsScale * 2.0 * lodDataGridSize);
 
 	float nstretch = _NormalsScale * lodDataGridSize; // normals scaled with geometry
 	const float spdmulL = normalScrollSpeeds[0];
