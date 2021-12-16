@@ -185,7 +185,7 @@ namespace Crest
                 if (_mode == Mode.GeometryVolume)
                 {
                     _underwaterEffectCommandBuffer.DrawMesh(_waterVolumeBoundaryGeometry.mesh, _waterVolumeBoundaryGeometry.transform.localToWorldMatrix, _underwaterEffectMaterial.material, submeshIndex: 0, shaderPass: 2);
-                    _underwaterEffectCommandBuffer.DrawMesh(_waterVolumeBoundaryGeometry.mesh, _waterVolumeBoundaryGeometry.transform.localToWorldMatrix, _underwaterEffectMaterial.material, submeshIndex: 0, shaderPass: 3);
+                    _underwaterEffectCommandBuffer.DrawProcedural(Matrix4x4.identity, _underwaterEffectMaterial.material, shaderPass: 3, MeshTopology.Triangles, 3, 1);
                 }
             }
 
