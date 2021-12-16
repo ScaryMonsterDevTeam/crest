@@ -62,6 +62,8 @@ namespace Crest
 
         RenderTexture _maskRT;
         RenderTexture _depthRT;
+        RenderTexture _boundaryFrontFaceRT;
+        RenderTexture _boundaryBackFaceRT;
 
         ComputeShader _fixMaskComputeShader;
         int _fixMaskKernel;
@@ -94,6 +96,8 @@ namespace Crest
         void OnDisableOceanMask()
         {
             DisableOceanMaskKeywords(_oceanMaskMaterial.material);
+            CleanUpMaskTextures();
+            CleanUpBoundaryTextures();
         }
 
         void DisableOceanMaskKeywords(Material material)
@@ -177,29 +181,55 @@ namespace Crest
             );
         }
 
-        void SetUpBoundaryTextures(CommandBuffer buffer, RenderTextureDescriptor descriptor)
+        void CreateRenderTargetTexture(ref RenderTexture texture, ref RenderTargetIdentifier target, RenderTextureDescriptor descriptor)
+        {
+            if (texture != null && descriptor.width == texture.width && descriptor.height == texture.height)
+            {
+                return;
+            }
+            else if (texture != null)
+            {
+                texture.Release();
+            }
+
+            texture = new RenderTexture(descriptor);
+            target = new RenderTargetIdentifier
+            (
+                texture,
+                mipLevel: 0,
+                CubemapFace.Unknown,
+                depthSlice: -1 // Bind all XR slices.
+            );
+        }
+
+        void DestroyRenderTargetTexture(ref RenderTexture texture)
+        {
+            if (texture != null)
+            {
+                texture.Release();
+                texture = null;
+            }
+        }
+
+        void SetUpBoundaryTextures(RenderTextureDescriptor descriptor)
         {
             descriptor.msaaSamples = 1;
             descriptor.useDynamicScale = true;
             descriptor.colorFormat = RenderTextureFormat.Depth;
             descriptor.depthBufferBits = 24;
 
-            buffer.GetTemporaryRT(sp_CrestWaterBoundaryGeometryFrontFaceTexture, descriptor);
+            CreateRenderTargetTexture(ref _boundaryFrontFaceRT, ref _boundaryFrontFaceTarget, descriptor);
 
             if (_mode == Mode.Geometry3D || _mode == Mode.GeometryVolume)
             {
-                buffer.GetTemporaryRT(sp_CrestWaterBoundaryGeometryBackFaceTexture, descriptor);
+                CreateRenderTargetTexture(ref _boundaryBackFaceRT, ref _boundaryBackFaceTarget, descriptor);
             }
         }
 
-        void CleanUpBoundaryTextures(Mode mode, CommandBuffer buffer)
+        void CleanUpBoundaryTextures()
         {
-            buffer.ReleaseTemporaryRT(sp_CrestWaterBoundaryGeometryFrontFaceTexture);
-
-            if (mode == Mode.Geometry3D || mode == Mode.GeometryVolume)
-            {
-                buffer.ReleaseTemporaryRT(sp_CrestWaterBoundaryGeometryBackFaceTexture);
-            }
+            DestroyRenderTargetTexture(ref _boundaryFrontFaceRT);
+            DestroyRenderTargetTexture(ref _boundaryBackFaceRT);
         }
 
         /// <summary>
@@ -238,7 +268,7 @@ namespace Crest
             // convex hull, but could be skipped if we sample the clip surface in the mask.
             if (_mode != Mode.FullScreen)
             {
-                SetUpBoundaryTextures(_oceanMaskCommandBuffer, descriptor);
+                SetUpBoundaryTextures(descriptor);
 
                 // Front faces.
                 _oceanMaskCommandBuffer.SetRenderTarget(_boundaryFrontFaceTarget);

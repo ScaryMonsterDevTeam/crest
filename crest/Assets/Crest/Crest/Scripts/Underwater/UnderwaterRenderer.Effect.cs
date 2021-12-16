@@ -191,7 +191,6 @@ namespace Crest
 
             RenderTexture.ReleaseTemporary(temporaryColorBuffer);
             _underwaterEffectCommandBuffer.ReleaseTemporaryRT(sp_CrestBoundaryStencil);
-            CleanUpBoundaryTextures(_mode, _underwaterEffectCommandBuffer);
         }
 
         internal static void UpdatePostProcessMaterial(

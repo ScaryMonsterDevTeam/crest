@@ -172,7 +172,6 @@ namespace Crest
 
         void Disable()
         {
-            CleanUpMaskTextures();
             _camera.RemoveCommandBuffer(CameraEvent.AfterForwardAlpha, _underwaterEffectCommandBuffer);
             // Temp cos had BeforeForwardOpaque registered...
             _camera.RemoveCommandBuffer(CameraEvent.BeforeForwardOpaque, _underwaterEffectCommandBuffer);
