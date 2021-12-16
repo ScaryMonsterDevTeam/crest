@@ -15,6 +15,7 @@ namespace Crest
         internal const string k_KeywordDebugViewOceanMask = "_DEBUG_VIEW_OCEAN_MASK";
 
         internal static readonly int sp_CrestCameraColorTexture = Shader.PropertyToID("_CrestCameraColorTexture");
+        static readonly int sp_CrestBoundaryStencil = Shader.PropertyToID("_CrestBoundaryStencil");
         static readonly int sp_InvViewProjection = Shader.PropertyToID("_InvViewProjection");
         static readonly int sp_InvViewProjectionRight = Shader.PropertyToID("_InvViewProjectionRight");
         static readonly int sp_AmbientLighting = Shader.PropertyToID("_AmbientLighting");
@@ -24,6 +25,23 @@ namespace Crest
         CommandBuffer _underwaterEffectCommandBuffer;
         PropertyWrapperMaterial _underwaterEffectMaterial;
         internal readonly UnderwaterSphericalHarmonicsData _sphericalHarmonicsData = new UnderwaterSphericalHarmonicsData();
+
+        Material _depthCopyMaterial;
+
+        RenderTargetIdentifier _colorTarget = new RenderTargetIdentifier
+        (
+            BuiltinRenderTextureType.CameraTarget,
+            0,
+            CubemapFace.Unknown,
+            -1
+        );
+        RenderTargetIdentifier _stencilTarget = new RenderTargetIdentifier
+        (
+            sp_CrestBoundaryStencil,
+            0,
+            CubemapFace.Unknown,
+            -1
+        );
 
         internal class UnderwaterSphericalHarmonicsData
         {
@@ -45,6 +63,26 @@ namespace Crest
                     name = "Underwater Pass",
                 };
             }
+
+            if (_depthCopyMaterial == null)
+            {
+                _depthCopyMaterial = new Material(Shader.Find("Hidden/Crest/Helpers/DepthCopy"));
+            }
+        }
+
+        void OnDisableUnderwaterEffect()
+        {
+            DisableUnderwaterEffectKeywords(_underwaterEffectMaterial.material);
+        }
+
+        static void DisableUnderwaterEffectKeywords(Material material)
+        {
+            // Multiple keywords from same set can be enabled at the same time leading to undefined behaviour so we need
+            // to disable all keywords from a set first.
+            // https://docs.unity3d.com/Manual/shader-keywords-scripts.html
+            material.DisableKeyword(k_KeywordBoundary2D);
+            material.DisableKeyword(k_KeywordBoundary3D);
+            material.DisableKeyword(k_KeywordBoundaryVolume);
         }
 
         void OnPreRenderUnderwaterEffect()
@@ -64,6 +102,7 @@ namespace Crest
             }
 
             var temporaryColorBuffer = RenderTexture.GetTemporary(descriptor);
+            temporaryColorBuffer.name = "Crest Temporary Color";
 
             UpdatePostProcessMaterial(
                 _camera,
@@ -72,6 +111,7 @@ namespace Crest
                 _meniscus,
                 _firstRender || _copyOceanMaterialParamsEachFrame,
                 _debug._viewOceanMask,
+                _debug._viewStencil,
                 _filterOceanData
             );
 
@@ -79,6 +119,23 @@ namespace Crest
             SetInverseViewProjectionMatrix(_underwaterEffectMaterial.material);
 
             _underwaterEffectCommandBuffer.Clear();
+
+            if (IsStencilBufferRequired)
+            {
+                // TODO: Check that QualitySettings.antiAliasing cannot be zero.
+                descriptor.msaaSamples = _camera.allowMSAA ? QualitySettings.antiAliasing : 1;
+                descriptor.colorFormat = RenderTextureFormat.Depth;
+                descriptor.depthBufferBits = 24;
+                descriptor.bindMS = _camera.allowMSAA;
+                _underwaterEffectCommandBuffer.GetTemporaryRT(sp_CrestBoundaryStencil, descriptor);
+                _underwaterEffectCommandBuffer.SetRenderTarget(temporaryColorBuffer, _stencilTarget);
+                _underwaterEffectCommandBuffer.ClearRenderTarget(true, true, Color.black);
+            }
+            else
+            {
+                _underwaterEffectCommandBuffer.SetRenderTarget(temporaryColorBuffer);
+                _underwaterEffectCommandBuffer.ClearRenderTarget(true, false, Color.black);
+            }
 
             if (_camera.allowMSAA)
             {
@@ -94,10 +151,47 @@ namespace Crest
 
             _underwaterEffectMaterial.SetTexture(sp_CrestCameraColorTexture, temporaryColorBuffer);
 
-            _underwaterEffectCommandBuffer.SetRenderTarget(BuiltinRenderTextureType.CameraTarget, 0, CubemapFace.Unknown, -1);
-            _underwaterEffectCommandBuffer.DrawProcedural(Matrix4x4.identity, _underwaterEffectMaterial.material, -1, MeshTopology.Triangles, 3, 1);
+            if (IsStencilBufferRequired)
+            {
+                if (_camera.allowMSAA)
+                {
+                    // Blit with a depth write shader to populate the depth buffer.
+                    _underwaterEffectCommandBuffer.Blit(BuiltinRenderTextureType.None, _stencilTarget, _depthCopyMaterial);
+                }
+                else
+                {
+                    _underwaterEffectCommandBuffer.CopyTexture(BuiltinRenderTextureType.Depth, _stencilTarget);
+                }
+
+                _underwaterEffectCommandBuffer.SetRenderTarget(_colorTarget, _stencilTarget);
+            }
+            else
+            {
+                _underwaterEffectCommandBuffer.SetRenderTarget(_colorTarget);
+            }
+
+
+            DisableUnderwaterEffectKeywords(_underwaterEffectMaterial.material);
+
+            if (_mode == Mode.FullScreen)
+            {
+                _underwaterEffectCommandBuffer.DrawProcedural(Matrix4x4.identity, _underwaterEffectMaterial.material, shaderPass: 0, MeshTopology.Triangles, 3, 1);
+            }
+            else
+            {
+                _underwaterEffectMaterial.material.DisableKeyword("_FULL_SCREEN_EFFECT");
+                _underwaterEffectCommandBuffer.DrawMesh(_waterVolumeBoundaryGeometry.mesh, _waterVolumeBoundaryGeometry.transform.localToWorldMatrix, _underwaterEffectMaterial.material, submeshIndex: 0, shaderPass: 1);
+
+                if (_mode == Mode.GeometryVolume)
+                {
+                    _underwaterEffectCommandBuffer.DrawMesh(_waterVolumeBoundaryGeometry.mesh, _waterVolumeBoundaryGeometry.transform.localToWorldMatrix, _underwaterEffectMaterial.material, submeshIndex: 0, shaderPass: 2);
+                    _underwaterEffectCommandBuffer.DrawMesh(_waterVolumeBoundaryGeometry.mesh, _waterVolumeBoundaryGeometry.transform.localToWorldMatrix, _underwaterEffectMaterial.material, submeshIndex: 0, shaderPass: 3);
+                }
+            }
 
             RenderTexture.ReleaseTemporary(temporaryColorBuffer);
+            _underwaterEffectCommandBuffer.ReleaseTemporaryRT(sp_CrestBoundaryStencil);
+            CleanUpBoundaryTextures(_mode, _underwaterEffectCommandBuffer);
         }
 
         internal static void UpdatePostProcessMaterial(
@@ -107,6 +201,7 @@ namespace Crest
             bool isMeniscusEnabled,
             bool copyParamsFromOceanMaterial,
             bool debugViewPostProcessMask,
+            bool debugViewStencil,
             int dataSliceOffset
         )
         {
@@ -121,6 +216,7 @@ namespace Crest
 
             // Enabling/disabling keywords each frame don't seem to have large measurable overhead
             underwaterPostProcessMaterial.SetKeyword(k_KeywordDebugViewOceanMask, debugViewPostProcessMask);
+            underwaterPostProcessMaterial.SetKeyword("_DEBUG_VIEW_STENCIL", debugViewStencil);
             underwaterPostProcessMaterial.SetKeyword("CREST_MENISCUS", isMeniscusEnabled);
 
             // We sample shadows at the camera position which will be the first slice.

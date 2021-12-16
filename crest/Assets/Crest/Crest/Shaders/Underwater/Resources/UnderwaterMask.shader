@@ -19,6 +19,9 @@ Shader "Hidden/Crest/Underwater/Ocean Mask"
 			// for VFACE
 			#pragma target 3.0
 
+			// Clipping the ocean surface for underwater volumes.
+			#pragma multi_compile_local __ CREST_BOUNDARY_2D CREST_BOUNDARY_HAS_BACKFACE
+
 			#include "UnityCG.cginc"
 
 			#include "../../Helpers/BIRP/Core.hlsl"
@@ -39,6 +42,8 @@ Shader "Hidden/Crest/Underwater/Ocean Mask"
 			CGPROGRAM
 			#pragma vertex Vert
 			#pragma fragment Frag
+
+			#pragma multi_compile_local __ CREST_BOUNDARY_HAS_BACKFACE
 
 			#include "UnityCG.cginc"
 

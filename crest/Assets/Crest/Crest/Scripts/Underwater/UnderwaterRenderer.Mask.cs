@@ -11,13 +11,18 @@ namespace Crest
     public partial class UnderwaterRenderer
     {
         const string k_ShaderPathOceanMask = "Hidden/Crest/Underwater/Ocean Mask";
+        const string k_ShaderPathWaterBoundary = "Hidden/Crest/Hidden/Water Boundary Geometry";
         internal const int k_ShaderPassOceanSurfaceMask = 0;
         internal const int k_ShaderPassOceanHorizonMask = 1;
+        internal const int k_ShaderPassWaterBoundaryFrontFace = 0;
+        internal const int k_ShaderPassWaterBoundaryBackFace = 1;
         internal const string k_ComputeShaderFillMaskArtefacts = "CrestFillMaskArtefacts";
         internal const string k_ComputeShaderKernelFillMaskArtefacts = "FillMaskArtefacts";
 
         public static readonly int sp_CrestOceanMaskTexture = Shader.PropertyToID("_CrestOceanMaskTexture");
         public static readonly int sp_CrestOceanMaskDepthTexture = Shader.PropertyToID("_CrestOceanMaskDepthTexture");
+        public static readonly int sp_CrestWaterBoundaryGeometryFrontFaceTexture = Shader.PropertyToID("_CrestWaterBoundaryGeometryFrontFaceTexture");
+        public static readonly int sp_CrestWaterBoundaryGeometryBackFaceTexture = Shader.PropertyToID("_CrestWaterBoundaryGeometryBackFaceTexture");
         public static readonly int sp_FarPlaneOffset = Shader.PropertyToID("_FarPlaneOffset");
 
         internal RenderTargetIdentifier _maskTarget = new RenderTargetIdentifier
@@ -38,6 +43,22 @@ namespace Crest
         internal Plane[] _cameraFrustumPlanes;
         CommandBuffer _oceanMaskCommandBuffer;
         PropertyWrapperMaterial _oceanMaskMaterial;
+
+        Material _boundaryMaterial = null;
+        RenderTargetIdentifier _boundaryBackFaceTarget = new RenderTargetIdentifier
+        (
+            sp_CrestWaterBoundaryGeometryBackFaceTexture,
+            mipLevel: 0,
+            CubemapFace.Unknown,
+            depthSlice: -1 // Bind all XR slices.
+        );
+        RenderTargetIdentifier _boundaryFrontFaceTarget = new RenderTargetIdentifier
+        (
+            sp_CrestWaterBoundaryGeometryFrontFaceTexture,
+            mipLevel: 0,
+            CubemapFace.Unknown,
+            depthSlice: -1 // Bind all XR slices.
+        );
 
         RenderTexture _maskRT;
         RenderTexture _depthRT;
@@ -62,7 +83,29 @@ namespace Crest
                 };
             }
 
+            if (_boundaryMaterial == null)
+            {
+                _boundaryMaterial = new Material(Shader.Find(k_ShaderPathWaterBoundary));
+            }
+
             SetUpFixMaskArtefactsShader();
+        }
+
+        void OnDisableOceanMask()
+        {
+            DisableOceanMaskKeywords(_oceanMaskMaterial.material);
+        }
+
+        void DisableOceanMaskKeywords(Material material)
+        {
+            // Multiple keywords from same set can be enabled at the same time leading to undefined behaviour so we need
+            // to disable all keywords from a set first.
+            // https://docs.unity3d.com/Manual/shader-keywords-scripts.html
+            material.DisableKeyword(k_KeywordBoundary2D);
+            material.DisableKeyword(k_KeywordBoundaryHasBackFace);
+            // Handling ocean keywords here.
+            OceanRenderer.Instance.OceanMaterial.DisableKeyword(k_KeywordBoundary2D);
+            OceanRenderer.Instance.OceanMaterial.DisableKeyword(k_KeywordBoundaryHasBackFace);
         }
 
         internal void SetUpFixMaskArtefactsShader()
@@ -134,6 +177,31 @@ namespace Crest
             );
         }
 
+        void SetUpBoundaryTextures(CommandBuffer buffer, RenderTextureDescriptor descriptor)
+        {
+            descriptor.msaaSamples = 1;
+            descriptor.useDynamicScale = true;
+            descriptor.colorFormat = RenderTextureFormat.Depth;
+            descriptor.depthBufferBits = 24;
+
+            buffer.GetTemporaryRT(sp_CrestWaterBoundaryGeometryFrontFaceTexture, descriptor);
+
+            if (_mode == Mode.Geometry3D || _mode == Mode.GeometryVolume)
+            {
+                buffer.GetTemporaryRT(sp_CrestWaterBoundaryGeometryBackFaceTexture, descriptor);
+            }
+        }
+
+        void CleanUpBoundaryTextures(Mode mode, CommandBuffer buffer)
+        {
+            buffer.ReleaseTemporaryRT(sp_CrestWaterBoundaryGeometryFrontFaceTexture);
+
+            if (mode == Mode.Geometry3D || mode == Mode.GeometryVolume)
+            {
+                buffer.ReleaseTemporaryRT(sp_CrestWaterBoundaryGeometryBackFaceTexture);
+            }
+        }
+
         /// <summary>
         /// Releases temporary mask textures. Pass any available command buffer through.
         /// </summary>
@@ -161,7 +229,63 @@ namespace Crest
         {
             RenderTextureDescriptor descriptor = XRHelpers.GetRenderTextureDescriptor(_camera);
 
+            DisableOceanMaskKeywords(_oceanMaskMaterial.material);
+
             _oceanMaskCommandBuffer.Clear();
+
+
+            // Needed for convex hull as we need to clip the mask right up until the volume begins. It is used for non
+            // convex hull, but could be skipped if we sample the clip surface in the mask.
+            if (_mode != Mode.FullScreen)
+            {
+                SetUpBoundaryTextures(_oceanMaskCommandBuffer, descriptor);
+
+                // Front faces.
+                _oceanMaskCommandBuffer.SetRenderTarget(_boundaryFrontFaceTarget);
+                _oceanMaskCommandBuffer.ClearRenderTarget(true, false, Color.black);
+                _oceanMaskCommandBuffer.SetGlobalTexture(sp_CrestWaterBoundaryGeometryFrontFaceTexture, _boundaryFrontFaceTarget);
+                _oceanMaskCommandBuffer.DrawMesh
+                (
+                    _waterVolumeBoundaryGeometry.mesh,
+                    _waterVolumeBoundaryGeometry.transform.localToWorldMatrix,
+                    _boundaryMaterial,
+                    submeshIndex: 0,
+                    k_ShaderPassWaterBoundaryFrontFace
+                );
+
+                if (_mode == Mode.Geometry3D || _mode == Mode.GeometryVolume)
+                {
+                    // Back faces.
+                    _oceanMaskCommandBuffer.SetRenderTarget(_boundaryBackFaceTarget);
+                    _oceanMaskCommandBuffer.ClearRenderTarget(true, false, Color.black);
+                    _oceanMaskCommandBuffer.SetGlobalTexture(sp_CrestWaterBoundaryGeometryBackFaceTexture, _boundaryBackFaceTarget);
+                    _oceanMaskCommandBuffer.DrawMesh
+                    (
+                        _waterVolumeBoundaryGeometry.mesh,
+                        _waterVolumeBoundaryGeometry.transform.localToWorldMatrix,
+                        _boundaryMaterial,
+                        submeshIndex: 0,
+                        k_ShaderPassWaterBoundaryBackFace
+                    );
+                }
+
+                switch (_mode)
+                {
+                    case Mode.Geometry2D:
+                        _oceanMaskMaterial.material.EnableKeyword(k_KeywordBoundary2D);
+                        OceanRenderer.Instance.OceanMaterial.EnableKeyword(k_KeywordBoundary2D);
+                        break;
+                    case Mode.Geometry3D:
+                        _oceanMaskMaterial.material.EnableKeyword(k_KeywordBoundaryHasBackFace);
+                        OceanRenderer.Instance.OceanMaterial.EnableKeyword(k_KeywordBoundaryHasBackFace);
+                        break;
+                    case Mode.GeometryVolume:
+                        _oceanMaskMaterial.material.EnableKeyword(k_KeywordBoundaryHasBackFace);
+                        OceanRenderer.Instance.OceanMaterial.EnableKeyword(k_KeywordBoundaryHasBackFace);
+                        break;
+                }
+            }
+
             // Must call after clear or temporaries will be cleared.
             SetUpMaskTextures(_oceanMaskCommandBuffer, descriptor);
             _oceanMaskCommandBuffer.SetRenderTarget(_maskTarget, _depthTarget);

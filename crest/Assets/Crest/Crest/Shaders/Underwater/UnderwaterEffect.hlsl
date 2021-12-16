@@ -16,6 +16,8 @@
 #include "../FullScreenTriangle.hlsl"
 #include "../OceanEmission.hlsl"
 
+#include "../../Helpers/WaterBoundary.hlsl"
+
 TEXTURE2D_X(_CrestCameraColorTexture);
 TEXTURE2D_X(_CrestOceanMaskTexture);
 TEXTURE2D_X(_CrestOceanMaskDepthTexture);
@@ -24,14 +26,22 @@ TEXTURE2D_X(_CrestOceanMaskDepthTexture);
 
 struct Attributes
 {
+#if CREST_BOUNDARY
+	float3 positionOS : POSITION;
+#else
 	uint id : SV_VertexID;
+#endif
 	UNITY_VERTEX_INPUT_INSTANCE_ID
 };
 
 struct Varyings
 {
 	float4 positionCS : SV_POSITION;
+#if CREST_BOUNDARY
+	float4 screenPosition : TEXCOORD0;
+#else
 	float2 uv : TEXCOORD0;
+#endif
 	UNITY_VERTEX_OUTPUT_STEREO
 };
 
@@ -43,8 +53,14 @@ Varyings Vert (Attributes input)
 	UNITY_INITIALIZE_OUTPUT(Varyings, output);
 	UNITY_INITIALIZE_VERTEX_OUTPUT_STEREO(output);
 
+#if CREST_BOUNDARY
+	// Use actual geometry instead of full screen triangle.
+	output.positionCS = UnityObjectToClipPos(float4(input.positionOS, 1.0));
+	output.screenPosition = ComputeScreenPos(output.positionCS);
+#else
 	output.positionCS = GetFullScreenTriangleVertexPosition(input.id);
 	output.uv = GetFullScreenTriangleTexCoord(input.id);
+#endif
 
 	return output;
 }
@@ -54,6 +70,22 @@ fixed4 Frag (Varyings input) : SV_Target
 	// We need this when sampling a screenspace texture.
 	UNITY_SETUP_STEREO_EYE_INDEX_POST_VERTEX(input);
 
+#if _DEBUG_VIEW_STENCIL
+#if CREST_BOUNDARY_FRONT_FACE
+		return float4(0.0, 0.0, 1.0, 1.0); // Front Face
+#elif CREST_BOUNDARY
+		return float4(0.0, 1.0, 0.0, 1.0); // Back Face
+#else
+		return float4(1.0, 0.0, 0.0, 1.0); // Full-Screen
+#endif
+#endif // _DEBUG_VIEW_STENCIL
+
+#if CREST_BOUNDARY
+	float2 uv = input.screenPosition.xy / input.screenPosition.w;
+#else
+	float2 uv = input.uv;
+#endif
+
 	const int2 positionSS = input.positionCS.xy;
 	half3 sceneColour = LOAD_TEXTURE2D_X(_CrestCameraColorTexture, positionSS).rgb;
 	float rawDepth = LOAD_TEXTURE2D_X(_CameraDepthTexture, positionSS).r;
@@ -61,9 +93,13 @@ fixed4 Frag (Varyings input) : SV_Target
 	const float rawOceanDepth = LOAD_TEXTURE2D_X(_CrestOceanMaskDepthTexture, positionSS).r;
 
 	bool isOceanSurface; bool isUnderwater; float sceneZ;
-	GetOceanSurfaceAndUnderwaterData(positionSS, rawOceanDepth, mask, rawDepth, isOceanSurface, isUnderwater, sceneZ, 0.0);
+	GetOceanSurfaceAndUnderwaterData(input.positionCS, positionSS, rawOceanDepth, mask, rawDepth, isOceanSurface, isUnderwater, sceneZ, 0.0);
 
-	float wt = ComputeMeniscusWeight(positionSS, mask, _HorizonNormal, sceneZ);
+	float fogDistance = sceneZ;
+	float meniscusDepth = 0.0;
+#if CREST_BOUNDARY
+	ApplyWaterBoundaryToUnderwaterFogAndMeniscus(input.positionCS, positionSS, rawDepth, isUnderwater, fogDistance, meniscusDepth);
+#endif
 
 #if _DEBUG_VIEW_OCEAN_MASK
 	return DebugRenderOceanMask(isOceanSurface, isUnderwater, mask, sceneColour);
@@ -73,13 +109,15 @@ fixed4 Frag (Varyings input) : SV_Target
 	{
 		// Position needs to be reconstructed in the fragment shader to avoid precision issues as per
 		// Unity's lead. Fixes caustics stuttering when far from zero.
-		const float3 positionWS = ComputeWorldSpacePosition(input.uv, rawDepth, UNITY_MATRIX_I_VP);
+		const float3 positionWS = ComputeWorldSpacePosition(uv, rawDepth, UNITY_MATRIX_I_VP);
 		const half3 view = normalize(_WorldSpaceCameraPos - positionWS);
 		float3 scenePos = _WorldSpaceCameraPos - view * sceneZ / dot(unity_CameraToWorld._m02_m12_m22, -view);
 		const float3 lightDir = _WorldSpaceLightPos0.xyz;
 		const half3 lightCol = _LightColor0;
-		sceneColour = ApplyUnderwaterEffect(positionSS, scenePos, sceneColour, lightCol, lightDir, rawDepth, sceneZ, view, isOceanSurface);
+		sceneColour = ApplyUnderwaterEffect(positionSS, scenePos, sceneColour, lightCol, lightDir, rawDepth, sceneZ, fogDistance, view, isOceanSurface);
 	}
+
+	float wt = ComputeMeniscusWeight(positionSS, mask, _HorizonNormal, meniscusDepth);
 
 	return half4(wt * sceneColour, 1.0);
 }

@@ -21,7 +21,23 @@ float4 DebugRenderOceanMask(const bool isOceanSurface, const bool isUnderwater, 
 	}
 }
 
-half ComputeMeniscusWeight(const int2 positionSS, const float mask, const float2 horizonNormal, const float sceneZ)
+float MeniscusSampleOceanMask(const float mask, const int2 positionSS, const float2 offset, const float magnitude, const float scale)
+{
+	float2 uv = positionSS + offset * magnitude
+#if CREST_BOUNDARY
+	* scale
+#endif
+	;
+
+	float newMask = LOAD_TEXTURE2D_X(_CrestOceanMaskTexture, uv).r;
+#if CREST_BOUNDARY
+	// No mask means no underwater effect so ignore the value.
+	return (newMask == UNDERWATER_MASK_NONE ? mask : newMask);
+#endif
+	return newMask;
+}
+
+half ComputeMeniscusWeight(const int2 positionSS, const float mask, const float2 horizonNormal, const float meniscusDepth)
 {
 	float weight = 1.0;
 #if CREST_MENISCUS
@@ -31,11 +47,20 @@ half ComputeMeniscusWeight(const int2 positionSS, const float mask, const float2
 	float2 offset = (float2)-mask * horizonNormal;
 	float multiplier = 0.9;
 
+#if CREST_BOUNDARY
+	// The meniscus at the boundary can be at a distance. We need to scale the offset as 1 pixel at a distance is much
+	// larger than 1 pixel up close.
+	const float scale = 1.0 - saturate(meniscusDepth / MENISCUS_MAXIMUM_DISTANCE);
+#else
+	// Dummy value.
+	const float scale = 0.0;
+#endif
+
 	// Sample three pixels along the normal. If the sample is different than the current mask, apply meniscus.
 	// Offset must be added to positionSS as floats.
-	weight *= (LOAD_TEXTURE2D_X(_CrestOceanMaskTexture, positionSS + offset * 1.0).r != mask) ? multiplier : 1.0;
-	weight *= (LOAD_TEXTURE2D_X(_CrestOceanMaskTexture, positionSS + offset * 2.0).r != mask) ? multiplier : 1.0;
-	weight *= (LOAD_TEXTURE2D_X(_CrestOceanMaskTexture, positionSS + offset * 3.0).r != mask) ? multiplier : 1.0;
+	weight *= (MeniscusSampleOceanMask(mask, positionSS, offset, 1.0, scale) != mask) ? multiplier : 1.0;
+	weight *= (MeniscusSampleOceanMask(mask, positionSS, offset, 2.0, scale) != mask) ? multiplier : 1.0;
+	weight *= (MeniscusSampleOceanMask(mask, positionSS, offset, 3.0, scale) != mask) ? multiplier : 1.0;
 #endif // _FULL_SCREEN_EFFECT
 #endif // CREST_MENISCUS
 	return weight;
@@ -43,6 +68,7 @@ half ComputeMeniscusWeight(const int2 positionSS, const float mask, const float2
 
 void GetOceanSurfaceAndUnderwaterData
 (
+	const float4 positionCS,
 	const int2 positionSS,
 	const float rawOceanDepth,
 	const float mask,
@@ -53,17 +79,45 @@ void GetOceanSurfaceAndUnderwaterData
 	const float oceanDepthTolerance
 )
 {
-	isOceanSurface = (rawDepth < rawOceanDepth + oceanDepthTolerance);
+	isOceanSurface = false;
 	isUnderwater = mask == UNDERWATER_MASK_BELOW_SURFACE;
 
-	// Merge ocean depth with scene depth.
-	if (isOceanSurface)
+#if CREST_BOUNDARY
+	const float rawGeometryDepth =
+#if CREST_BOUNDARY_HAS_BACKFACE
+	// 3D has a back face texture for the depth.
+	LOAD_DEPTH_TEXTURE_X(_CrestWaterBoundaryGeometryBackFaceTexture, positionSS);
+#else
+	// TODO: Set this as scene depth instead of sampling.
+	// Volume is rendered using the back face so that is the depth.
+	positionCS.z;
+#endif // CREST_BOUNDARY_HAS_BACKFACE
+	;
+
+	// TODO: The scene depth comparison is redundant for back face rendering. If we populated the depth buffer with
+	// the ocean depth we could also remove the ocean comparison for back face rendering.
+	// Use backface depth if closest.
+	if (rawDepth < rawGeometryDepth && rawOceanDepth < rawGeometryDepth)
 	{
+		// Cancels out caustics.
+		isOceanSurface = true;
+		rawDepth = rawGeometryDepth;
+		// No need to multi-sample.
+		sceneZ = CrestLinearEyeDepth(rawDepth);
+		return;
+	}
+#endif // CREST_BOUNDARY
+
+	// Merge ocean depth with scene depth.
+	if (rawDepth < rawOceanDepth + oceanDepthTolerance)
+	{
+		isOceanSurface = true;
 		rawDepth = rawOceanDepth;
 		sceneZ = CrestLinearEyeDepth(CREST_MULTILOAD_DEPTH(_CrestOceanMaskDepthTexture, positionSS, rawDepth));
 	}
 	else
 	{
+		// For small water volumes this will have the opposite effect.
 		sceneZ = CrestLinearEyeDepth(CREST_MULTILOAD_SCENE_DEPTH(positionSS, rawDepth));
 	}
 }
@@ -78,6 +132,7 @@ half3 ApplyUnderwaterEffect
 	const float3 lightDir,
 	const float rawDepth,
 	const float sceneZ,
+	const float fogDistance,
 	const half3 view,
 	const bool isOceanSurface
 )
@@ -145,8 +200,16 @@ half3 ApplyUnderwaterEffect
 	}
 #endif // _CAUSTICS_ON
 
-	return lerp(sceneColour, scatterCol, saturate(1.0 - exp(-_DepthFogDensity.xyz * sceneZ)));
+	return lerp(sceneColour, scatterCol, saturate(1.0 - exp(-_DepthFogDensity.xyz * fogDistance)));
 }
 #endif // CREST_OCEAN_EMISSION_INCLUDED
+
+void ApplyWaterBoundaryToUnderwaterFogAndMeniscus(float4 positionCS, int2 positionSS, float rawDepth, bool isUnderwater, inout float fogDistance, inout float meniscusDepth)
+{
+#if CREST_BOUNDARY_FRONT_FACE
+	meniscusDepth = CrestLinearEyeDepth(positionCS.z);
+	fogDistance -= CrestLinearEyeDepth(positionCS.z);
+#endif
+}
 
 #endif // CREST_UNDERWATER_EFFECT_SHARED_INCLUDED

@@ -29,6 +29,23 @@ namespace Crest
         int _version = 0;
 #pragma warning restore 414
 
+        internal const string k_KeywordBoundary2D = "CREST_BOUNDARY_2D";
+        internal const string k_KeywordBoundary3D = "CREST_BOUNDARY_3D";
+        internal const string k_KeywordBoundaryVolume = "CREST_BOUNDARY_VOLUME";
+        internal const string k_KeywordBoundaryHasBackFace = "CREST_BOUNDARY_HAS_BACKFACE";
+
+        public enum Mode
+        {
+            FullScreen,
+            Geometry2D,
+            Geometry3D,
+            GeometryVolume,
+        }
+
+        [SerializeField]
+        [Tooltip("Rendering mode of the ocean and underwater effect.")]
+        internal Mode _mode;
+
         // This adds an offset to the cascade index when sampling ocean data, in effect smoothing/blurring it. Default
         // to shifting the maximum amount (shift from lod 0 to penultimate lod - dont use last lod as it cross-fades
         // data in/out), as more filtering was better in testing.
@@ -45,6 +62,12 @@ namespace Crest
         [Tooltip("Scales the depth fog density. Useful to reduce the intensity of the depth fog when underwater water only.")]
         float _depthFogDensityFactor = 1f;
         public float DepthFogDensityFactor => _depthFogDensityFactor;
+
+
+        [Header("Geometry")]
+
+        [SerializeField, Predicated("_mode", inverted: false, Mode.FullScreen), DecoratedField]
+        internal MeshFilter _waterVolumeBoundaryGeometry;
 
 
         [Header("Advanced")]
@@ -66,12 +89,15 @@ namespace Crest
         {
             public bool _viewOceanMask = false;
             public bool _disableOceanMask = false;
+            public bool _viewStencil = false;
             public bool _disableHeightAboveWaterOptimization = false;
             public bool _disableArtifactCorrection = false;
         }
 
         Camera _camera;
         bool _firstRender = true;
+
+        internal bool IsStencilBufferRequired => _mode == Mode.GeometryVolume;
 
         Matrix4x4 _gpuInverseViewProjectionMatrix;
         Matrix4x4 _gpuInverseViewProjectionMatrixRight;
@@ -98,7 +124,8 @@ namespace Crest
                     return false;
                 }
 
-                if (!_debug._disableHeightAboveWaterOptimization && OceanRenderer.Instance.ViewerHeightAboveWater > 2f)
+                // TODO: We'll need to watch "mode" for changes and reset the keywords.
+                if (!_debug._disableHeightAboveWaterOptimization && _mode == Mode.FullScreen && OceanRenderer.Instance.ViewerHeightAboveWater > 2f)
                 {
                     return false;
                 }
@@ -147,7 +174,11 @@ namespace Crest
         {
             CleanUpMaskTextures();
             _camera.RemoveCommandBuffer(CameraEvent.AfterForwardAlpha, _underwaterEffectCommandBuffer);
+            // Temp cos had BeforeForwardOpaque registered...
+            _camera.RemoveCommandBuffer(CameraEvent.BeforeForwardOpaque, _underwaterEffectCommandBuffer);
             _camera.RemoveCommandBuffer(CameraEvent.BeforeForwardAlpha, _oceanMaskCommandBuffer);
+            OnDisableOceanMask();
+            OnDisableUnderwaterEffect();
         }
 
         void OnPreRender()
