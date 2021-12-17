@@ -159,6 +159,7 @@ namespace Crest
             descriptor.enableRandomWrite = true;
 
             Instance._maskRT = new RenderTexture(descriptor);
+            Instance._maskRT.name = "_CrestOceanMaskTexture";
             Instance._maskTarget = new RenderTargetIdentifier
             (
                 Instance._maskRT,
@@ -172,6 +173,7 @@ namespace Crest
             descriptor.enableRandomWrite = false;
 
             Instance._depthRT = new RenderTexture(descriptor);
+            Instance._depthRT.name = "_CrestOceanMaskDepthTexture";
             Instance._depthTarget = new RenderTargetIdentifier
             (
                 Instance._depthRT,
@@ -219,10 +221,12 @@ namespace Crest
             descriptor.depthBufferBits = 24;
 
             CreateRenderTargetTexture(ref _boundaryFrontFaceRT, ref _boundaryFrontFaceTarget, descriptor);
+            _boundaryFrontFaceRT.name = "_CrestBoundaryFrontFaceTexture";
 
             if (_mode == Mode.Geometry3D || _mode == Mode.GeometryVolume)
             {
                 CreateRenderTargetTexture(ref _boundaryBackFaceRT, ref _boundaryBackFaceTarget, descriptor);
+                _boundaryBackFaceRT.name = "_CrestBoundaryBackFaceTexture";
             }
         }
 
@@ -261,8 +265,11 @@ namespace Crest
 
             DisableOceanMaskKeywords(_oceanMaskMaterial.material);
 
+            _oceanMaskMaterial.material.SetKeyword(k_KeywordBoundary, _mode != Mode.FullScreen);
+
             _oceanMaskCommandBuffer.Clear();
 
+            SetUpMaskTextures(_oceanMaskCommandBuffer, descriptor);
 
             // Needed for convex hull as we need to clip the mask right up until the volume begins. It is used for non
             // convex hull, but could be skipped if we sample the clip surface in the mask.
@@ -297,29 +304,38 @@ namespace Crest
                         submeshIndex: 0,
                         k_ShaderPassWaterBoundaryBackFace
                     );
+
+                    // Populate the stencil buffer.
+                    // TODO: Try to eliminate this pass.
+                    _oceanMaskCommandBuffer.SetRenderTarget(_depthTarget);
+                    _oceanMaskCommandBuffer.ClearRenderTarget(true, false, Color.black);
+                    _oceanMaskCommandBuffer.DrawMesh
+                    (
+                        _waterVolumeBoundaryGeometry.mesh,
+                        _waterVolumeBoundaryGeometry.transform.localToWorldMatrix,
+                        _boundaryMaterial,
+                        submeshIndex: 0,
+                        2
+                    );
                 }
 
+                // TODO: Use global shader keywords.
                 switch (_mode)
                 {
                     case Mode.Geometry2D:
-                        _oceanMaskMaterial.material.EnableKeyword(k_KeywordBoundary2D);
                         OceanRenderer.Instance.OceanMaterial.EnableKeyword(k_KeywordBoundary2D);
                         break;
                     case Mode.Geometry3D:
-                        _oceanMaskMaterial.material.EnableKeyword(k_KeywordBoundaryHasBackFace);
                         OceanRenderer.Instance.OceanMaterial.EnableKeyword(k_KeywordBoundaryHasBackFace);
                         break;
                     case Mode.GeometryVolume:
-                        _oceanMaskMaterial.material.EnableKeyword(k_KeywordBoundaryHasBackFace);
                         OceanRenderer.Instance.OceanMaterial.EnableKeyword(k_KeywordBoundaryHasBackFace);
                         break;
                 }
             }
 
-            // Must call after clear or temporaries will be cleared.
-            SetUpMaskTextures(_oceanMaskCommandBuffer, descriptor);
             _oceanMaskCommandBuffer.SetRenderTarget(_maskTarget, _depthTarget);
-            _oceanMaskCommandBuffer.ClearRenderTarget(true, true, Color.black);
+            _oceanMaskCommandBuffer.ClearRenderTarget(!IsStencilBufferRequired, true, Color.black);
             _oceanMaskCommandBuffer.SetGlobalTexture(sp_CrestOceanMaskTexture, _maskTarget);
             _oceanMaskCommandBuffer.SetGlobalTexture(sp_CrestOceanMaskDepthTexture, _depthTarget);
 

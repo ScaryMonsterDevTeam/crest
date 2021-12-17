@@ -13,14 +13,20 @@ Shader "Hidden/Crest/Underwater/Ocean Mask"
 			// use it for underwater rendering features.
 			Cull Off
 
+			// TODO: Disable when not needed.
+			Stencil
+			{
+				Ref 5
+				Comp Equal
+			}
+
 			CGPROGRAM
 			#pragma vertex Vert
 			#pragma fragment Frag
 			// for VFACE
 			#pragma target 3.0
 
-			// Clipping the ocean surface for underwater volumes.
-			#pragma multi_compile_local __ CREST_BOUNDARY_2D CREST_BOUNDARY_HAS_BACKFACE
+			#pragma multi_compile_local _ CREST_BOUNDARY
 
 			#include "UnityCG.cginc"
 
@@ -39,11 +45,16 @@ Shader "Hidden/Crest/Underwater/Ocean Mask"
 			// Horizon must be rendered first or it will overwrite the mask with incorrect values. ZTest not needed.
 			ZTest Off
 
+			// TODO: Disable when not needed.
+			Stencil
+			{
+				Ref 5
+				Comp Equal
+			}
+
 			CGPROGRAM
 			#pragma vertex Vert
 			#pragma fragment Frag
-
-			#pragma multi_compile_local __ CREST_BOUNDARY_HAS_BACKFACE
 
 			#include "UnityCG.cginc"
 

@@ -29,6 +29,7 @@ namespace Crest
         int _version = 0;
 #pragma warning restore 414
 
+        internal const string k_KeywordBoundary = "CREST_BOUNDARY";
         internal const string k_KeywordBoundary2D = "CREST_BOUNDARY_2D";
         internal const string k_KeywordBoundary3D = "CREST_BOUNDARY_3D";
         internal const string k_KeywordBoundaryVolume = "CREST_BOUNDARY_VOLUME";

@@ -64,9 +64,10 @@ Shader "Hidden/Crest/Hidden/Water Boundary Geometry"
 
 		Pass
 		{
-			Name "Boundary: Stencil"
+			Name "Boundary: Back Faces - Stenciled"
 			Cull Front
 
+			// We want the mask to render behind the back face
 			ZWrite Off
 
 			Stencil

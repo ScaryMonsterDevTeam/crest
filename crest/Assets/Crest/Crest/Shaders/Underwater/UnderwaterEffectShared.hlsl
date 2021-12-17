@@ -45,7 +45,7 @@ half ComputeMeniscusWeight(const int2 positionSS, const float mask, const float2
 	// Render meniscus by checking the mask along the horizon normal which is flipped using the surface normal from
 	// mask. Adding the mask value will flip the UV when mask is below surface.
 	float2 offset = (float2)-mask * horizonNormal;
-	float multiplier = 0.9;
+	float multiplier = 0.0;
 
 #if CREST_BOUNDARY
 	// The meniscus at the boundary can be at a distance. We need to scale the offset as 1 pixel at a distance is much

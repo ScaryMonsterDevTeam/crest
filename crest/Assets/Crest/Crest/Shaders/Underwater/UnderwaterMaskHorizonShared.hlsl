@@ -46,10 +46,6 @@ half4 Frag(Varyings input) : SV_Target
 {
 	UNITY_SETUP_STEREO_EYE_INDEX_POST_VERTEX(input);
 
-#if CREST_BOUNDARY_HAS_BACKFACE
-	ApplyWaterBoundaryToOceanHorizon(input.positionCS);
-#endif
-
 	float3 positionWS = ComputeWorldSpacePosition(input.uv, _FarPlaneOffset, UNITY_MATRIX_I_VP);
 	return (half4) positionWS.y > _OceanCenterPosWorld.y
 		? UNDERWATER_MASK_ABOVE_SURFACE
