@@ -95,6 +95,11 @@ namespace Crest
 
             RenderTextureDescriptor descriptor = XRHelpers.GetRenderTextureDescriptor(_camera);
             descriptor.useDynamicScale = _camera.allowDynamicResolution;
+            // TODO: Look into if this will cause multiple resolves on Windows.
+            descriptor.SetMSAASamples(_camera);
+            // We are not using MS samplers.
+            descriptor.bindMS = false;
+
             // Format must be correct for CopyTexture to work. Hopefully this is good enough.
             if (_camera.allowHDR)
             {
@@ -122,11 +127,11 @@ namespace Crest
 
             if (IsStencilBufferRequired)
             {
-                // TODO: Check that QualitySettings.antiAliasing cannot be zero.
-                descriptor.msaaSamples = 1; //_camera.allowMSAA ? QualitySettings.antiAliasing : 1;
                 descriptor.colorFormat = RenderTextureFormat.Depth;
                 descriptor.depthBufferBits = 24;
-                descriptor.bindMS = false;//_camera.allowMSAA;
+                // bindMS is necessary in this case for depth.
+                descriptor.bindMS = descriptor.msaaSamples > 1;
+
                 _underwaterEffectCommandBuffer.GetTemporaryRT(sp_CrestBoundaryStencil, descriptor);
                 _underwaterEffectCommandBuffer.SetRenderTarget(temporaryColorBuffer, _stencilTarget);
                 _underwaterEffectCommandBuffer.ClearRenderTarget(true, true, Color.black);

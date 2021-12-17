@@ -4,6 +4,11 @@
 
 Shader "Hidden/Crest/Underwater/Ocean Mask"
 {
+	Properties
+	{
+		_StencilRef("Stencil Reference", Int) = 0
+	}
+
 	SubShader
 	{
 		Pass
@@ -13,10 +18,9 @@ Shader "Hidden/Crest/Underwater/Ocean Mask"
 			// use it for underwater rendering features.
 			Cull Off
 
-			// TODO: Disable when not needed.
 			Stencil
 			{
-				Ref 5
+				Ref [_StencilRef]
 				Comp Equal
 			}
 
@@ -45,10 +49,9 @@ Shader "Hidden/Crest/Underwater/Ocean Mask"
 			// Horizon must be rendered first or it will overwrite the mask with incorrect values. ZTest not needed.
 			ZTest Off
 
-			// TODO: Disable when not needed.
 			Stencil
 			{
-				Ref 5
+				Ref [_StencilRef]
 				Comp Equal
 			}
 

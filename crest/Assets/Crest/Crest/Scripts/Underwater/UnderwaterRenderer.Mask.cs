@@ -261,15 +261,16 @@ namespace Crest
 
         void OnPreRenderOceanMask()
         {
+            _oceanMaskCommandBuffer.Clear();
+
             RenderTextureDescriptor descriptor = XRHelpers.GetRenderTextureDescriptor(_camera);
 
             DisableOceanMaskKeywords(_oceanMaskMaterial.material);
 
-            _oceanMaskMaterial.material.SetKeyword(k_KeywordBoundary, _mode != Mode.FullScreen);
-
-            _oceanMaskCommandBuffer.Clear();
-
             SetUpMaskTextures(_oceanMaskCommandBuffer, descriptor);
+
+            _oceanMaskMaterial.material.SetKeyword(k_KeywordBoundary, _mode != Mode.FullScreen);
+            _oceanMaskMaterial.material.SetInt("_StencilRef", IsStencilBufferRequired ? 5 : 0);
 
             // Needed for convex hull as we need to clip the mask right up until the volume begins. It is used for non
             // convex hull, but could be skipped if we sample the clip surface in the mask.

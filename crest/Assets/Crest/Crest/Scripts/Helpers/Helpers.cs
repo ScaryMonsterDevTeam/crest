@@ -75,5 +75,17 @@ namespace Crest
                 buffer.DisableShaderKeyword(keyword);
             }
         }
+
+        ///<summary>
+        /// Sets the msaaSamples property to the highest supported MSAA level in the settings.
+        ///</summary>
+        public static void SetMSAASamples(this RenderTextureDescriptor descriptor, Camera camera)
+        {
+            // QualitySettings.antiAliasing is zero when disabled which is invalid for msaaSamples.
+            // We need to set this first as GetRenderTextureSupportedMSAASampleCount uses it:
+            // https://docs.unity3d.com/ScriptReference/SystemInfo.GetRenderTextureSupportedMSAASampleCount.html
+            descriptor.msaaSamples = camera.allowMSAA ? Mathf.Max(QualitySettings.antiAliasing, 1) : 1;
+            descriptor.msaaSamples = SystemInfo.GetRenderTextureSupportedMSAASampleCount(descriptor);
+        }
     }
 }
