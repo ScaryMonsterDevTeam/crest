@@ -302,21 +302,26 @@ namespace Crest
                         _waterVolumeBoundaryGeometry.transform.localToWorldMatrix,
                         _boundaryMaterial,
                         submeshIndex: 0,
-                        k_ShaderPassWaterBoundaryBackFace
-                    );
-
-                    // Populate the stencil buffer.
-                    // TODO: Try to eliminate this pass.
-                    _oceanMaskCommandBuffer.SetRenderTarget(_depthTarget);
-                    _oceanMaskCommandBuffer.ClearRenderTarget(true, false, Color.black);
-                    _oceanMaskCommandBuffer.DrawMesh
-                    (
-                        _waterVolumeBoundaryGeometry.mesh,
-                        _waterVolumeBoundaryGeometry.transform.localToWorldMatrix,
-                        _boundaryMaterial,
-                        submeshIndex: 0,
                         2
                     );
+
+                    _oceanMaskCommandBuffer.CopyTexture(_boundaryBackFaceTarget, _depthTarget);
+                    _oceanMaskCommandBuffer.Blit(BuiltinRenderTextureType.None, _depthTarget, _depthCopyMaterial, 1);
+
+                    // _oceanMaskCommandBuffer.SetRenderTarget(_depthTarget);
+                    // _oceanMaskCommandBuffer.ClearRenderTarget(true, false, Color.black);
+
+                    // // Populate the stencil buffer.
+                    // _oceanMaskCommandBuffer.SetRenderTarget(_depthTarget);
+                    // _oceanMaskCommandBuffer.ClearRenderTarget(true, false, Color.black);
+                    // _oceanMaskCommandBuffer.DrawMesh
+                    // (
+                    //     _waterVolumeBoundaryGeometry.mesh,
+                    //     _waterVolumeBoundaryGeometry.transform.localToWorldMatrix,
+                    //     _boundaryMaterial,
+                    //     submeshIndex: 0,
+                    //     2
+                    // );
                 }
 
                 // TODO: Use global shader keywords.

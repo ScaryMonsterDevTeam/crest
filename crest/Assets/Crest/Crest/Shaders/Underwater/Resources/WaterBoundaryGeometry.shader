@@ -68,7 +68,7 @@ Shader "Hidden/Crest/Hidden/Water Boundary Geometry"
 			Cull Front
 
 			// We want the mask to render behind the back face
-			ZWrite Off
+			ZWrite On
 
 			Stencil
 			{

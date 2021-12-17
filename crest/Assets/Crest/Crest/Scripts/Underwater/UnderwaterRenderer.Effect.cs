@@ -66,7 +66,7 @@ namespace Crest
 
             if (_depthCopyMaterial == null)
             {
-                _depthCopyMaterial = new Material(Shader.Find("Hidden/Crest/Helpers/DepthCopy"));
+                _depthCopyMaterial = new Material(Shader.Find("Hidden/Crest/Helpers/Depth"));
             }
         }
 
@@ -123,10 +123,10 @@ namespace Crest
             if (IsStencilBufferRequired)
             {
                 // TODO: Check that QualitySettings.antiAliasing cannot be zero.
-                descriptor.msaaSamples = _camera.allowMSAA ? QualitySettings.antiAliasing : 1;
+                descriptor.msaaSamples = 1; //_camera.allowMSAA ? QualitySettings.antiAliasing : 1;
                 descriptor.colorFormat = RenderTextureFormat.Depth;
                 descriptor.depthBufferBits = 24;
-                descriptor.bindMS = _camera.allowMSAA;
+                descriptor.bindMS = false;//_camera.allowMSAA;
                 _underwaterEffectCommandBuffer.GetTemporaryRT(sp_CrestBoundaryStencil, descriptor);
                 _underwaterEffectCommandBuffer.SetRenderTarget(temporaryColorBuffer, _stencilTarget);
                 _underwaterEffectCommandBuffer.ClearRenderTarget(true, true, Color.black);
@@ -156,7 +156,7 @@ namespace Crest
                 if (_camera.allowMSAA)
                 {
                     // Blit with a depth write shader to populate the depth buffer.
-                    _underwaterEffectCommandBuffer.Blit(BuiltinRenderTextureType.None, _stencilTarget, _depthCopyMaterial);
+                    _underwaterEffectCommandBuffer.Blit(BuiltinRenderTextureType.None, _stencilTarget, _depthCopyMaterial, 0);
                 }
                 else
                 {

@@ -1,58 +1,67 @@
-﻿Shader "Hidden/Crest/Helpers/DepthCopy"
+﻿Shader "Hidden/Crest/Helpers/Depth"
 {
 	SubShader
 	{
 		Cull Off ZWrite On ZTest Always
 
+		HLSLINCLUDE
+		#pragma vertex Vertex
+
+		#include "UnityCG.cginc"
+
+		#include "../../Helpers/BIRP/Core.hlsl"
+		#include "../../Helpers/BIRP/InputsDriven.hlsl"
+
+		#include "../../OceanShaderHelpers.hlsl"
+
+		struct Attributes
+		{
+			float4 positionOS : POSITION;
+		};
+
+		struct Varyings
+		{
+			float4 positionCS : SV_POSITION;
+		};
+
+		TEXTURE2D_X(_CameraDepthTexture);
+
+		Varyings Vertex(Attributes input)
+		{
+			Varyings output;
+			output.positionCS = UnityObjectToClipPos(input.positionOS);
+			return output;
+		}
+		ENDHLSL
+
 		Pass
 		{
-			CGPROGRAM
-			#pragma vertex Vertex
+			Name "Copy Depth"
+
+			HLSLPROGRAM
 			#pragma fragment Fragment
 
-			#include "UnityCG.cginc"
-
-			#include "../../Helpers/BIRP/Core.hlsl"
-			#include "../../Helpers/BIRP/InputsDriven.hlsl"
-
-			#include "../../OceanShaderHelpers.hlsl"
-
-			struct appdata
+			half4 Fragment(Varyings input, out float o_depth : SV_Depth) : SV_Target
 			{
-				float4 vertex : POSITION;
-				float2 uv : TEXCOORD0;
-			};
-
-			struct v2f
-			{
-				float2 uv : TEXCOORD0;
-				float4 vertex : SV_POSITION;
-			};
-
-			v2f Vertex(appdata v)
-			{
-				v2f o;
-				o.vertex = UnityObjectToClipPos(v.vertex);
-				o.uv = v.uv;
-				return o;
+				o_depth = LOAD_DEPTH_TEXTURE_X(_CameraDepthTexture, input.positionCS.xy);
+				return 1.0;
 			}
+			ENDHLSL
+		}
 
-			TEXTURE2D_X(_CameraDepthTexture);
-			// sampler2D _CrestOceanMaskDepthTexture;
+		Pass
+		{
+			Name "Clear Depth Only"
 
-			// important part: outputs depth from _MyDepthTex to depth buffer
-			half4 Fragment(v2f i, out float outDepth : SV_Depth) : SV_Target
+			HLSLPROGRAM
+			#pragma fragment Fragment
+
+			half4 Fragment(Varyings input, out float o_depth : SV_Depth) : SV_Target
 			{
-				float depth = LOAD_DEPTH_TEXTURE_X(_CameraDepthTexture, i.vertex.xy);
-				// Unity bug is binding wrong texture.
-				// float oceanDepth = tex2D(_CrestOceanMaskDepthTexture, i.uv).r;
-				outDepth = depth;
-					// depth < oceanDepth ? oceanDepth :
-					// depth;
-				return 1;
+				o_depth = 0.0;
+				return 1.0;
 			}
-
-			ENDCG
+			ENDHLSL
 		}
 	}
 }
